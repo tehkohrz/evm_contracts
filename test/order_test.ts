@@ -18,7 +18,7 @@ describe('Orders Relayer', function () {
   }
 
   describe('generate order key', function () {
-    it('should generate a unique length 32 key', async function () {
+    it.only('should generate a unique length 32 key', async function () {
       await loadFixture(deployFixture);
       const tx = await ordersRelayer.generateOrderKey();
       console.log(tx);
@@ -27,7 +27,7 @@ describe('Orders Relayer', function () {
   });
 
   describe('create order', function () {
-    it.only('should create order and emit event for creation', async function () {
+    it('should create order and emit event for creation', async function () {
       await loadFixture(deployFixture);
       const testOrderReq = {
         creator: '0x1576E5229Ea037215d4F58f1439EF27412E28c82',
@@ -54,3 +54,5 @@ describe('Orders Relayer', function () {
     });
   });
 });
+
+import 'hardhat/console.sol';

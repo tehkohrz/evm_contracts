@@ -1,19 +1,21 @@
 import hre from 'hardhat';
 
 const OrdersAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
-const carbonAddress = '0x7B93Da8e76D8B97C1c255E8E61bede2148981097';
+
+const valEVMAccAddress = '0x5161e15fee8b918d4621703db75641bbc25301c8';
+const carbonAddress = '0x352D3dfBeAF0a23A127d0920eB0C390d4905aa13';
 
 async function main() {
   const OrdersRelayer = await hre.ethers.getContractFactory('OrdersRelayer');
 
   const ordersRelayer = OrdersRelayer.attach(carbonAddress);
   const testOrderReq = {
-    creator: '0x5161e15fee8b918d4621703db75641bbc25301c8',
-    market: 'eth_swth',
-    side: 'buy',
-    quantity: 123123,
-    orderType: 'limit',
-    price: '123123',
+    creator: valEVMAccAddress,
+    market: 'swth_eth',
+    side: hre.ethers.BigNumber.from('0'),
+    quantity: 1231230000000000,
+    orderType: hre.ethers.BigNumber.from('0'),
+    price: 1000000000000000,
     isReduceOnly: false,
   };
 
@@ -30,7 +32,17 @@ async function main() {
   console.log('Tx encoded', orderTx);
   const orderReceipt = await orderTx.wait();
   console.log('============Logging events============ \n');
-  console.log(orderReceipt.logs);
+  console.log(orderReceipt.events);
+  const orderKey = orderReceipt.events[0].args[0];
+  //todo check if the order is in the pending store then check if it is delete from the pending store
+  const test = await ordersRelayer.ping();
+  console.log('test', test);
+  const checkTx = await ordersRelayer.pendingOrders(orderKey);
+  console.log('Pending orders', checkTx);
+  const checkReceipt = await checkTx.wait();
+  console.log('============Logging events============ \n');
+  console.log(checkReceipt.logs);
+
   return;
 }
 // We recommend this pattern to be able to use async/await everywhere
