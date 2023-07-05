@@ -5,36 +5,16 @@ const OrdersAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 const valEVMAccAddress = '0x5161e15fee8b918d4621703db75641bbc25301c8';
 const carbonAddress = '0x352D3dfBeAF0a23A127d0920eB0C390d4905aa13';
 
+const orderKey = '0xb5c0e0c51cc581688cf8c391a394df4befbc897dfc5cd2bf5b044773c965b09f';
+
 async function main() {
   const OrdersRelayer = await hre.ethers.getContractFactory('OrdersRelayer');
 
   const ordersRelayer = OrdersRelayer.attach(carbonAddress);
   const test = await ordersRelayer.ping();
 
-  const testOrderReq = {
-    creator: valEVMAccAddress,
-    market: 'swth_eth',
-    side: hre.ethers.BigNumber.from('0'),
-    quantity: 1231230000000000,
-    orderType: hre.ethers.BigNumber.from('0'),
-    price: 1000000000000000,
-    isReduceOnly: false,
-  };
-
-  console.log('Calling order');
-  const orderTx = await ordersRelayer.createOrder(
-    testOrderReq.creator,
-    testOrderReq.market,
-    testOrderReq.side,
-    testOrderReq.quantity,
-    testOrderReq.orderType,
-    testOrderReq.price,
-    testOrderReq.isReduceOnly
-  );
-  console.log('Tx encoded', orderTx);
-  const orderReceipt = await orderTx.wait();
-  console.log('============Logging events============ \n');
-  console.log(orderReceipt.events);
+  const checkTx = await ordersRelayer.pendingOrders(orderKey);
+  console.log('Pending orders', checkTx);
 
   return;
 }

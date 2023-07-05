@@ -12,7 +12,7 @@ const config: HardhatUserConfig = {
       },
     },
   },
-  defaultNetwork: 'hardhat',
+  defaultNetwork: 'carbon_local',
   networks: {
     hardhat: {},
     carbon_local: {

@@ -3,15 +3,26 @@
 pragma solidity ^0.8.0;
 
 import "./@openzeppelin/contracts/utils/Strings.sol";
+import "./@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "./@openzeppelin/contracts/access/Ownable.sol";
 import "./@openzeppelin/contracts/security/Pausable.sol";
 
 contract OrdersRelayer is Ownable, Pausable {
-    // Commented order fields cannot be added due to stack limitation
-    // 12 fields for the local stored map
+    using EnumerableMap for EnumerableMap.Bytes32ToUintMap;
+
+    struct Position {
+        string market;
+        string accountAddress;
+        int256 lots;
+        uint256 entryPrice;
+        int256 realisedPnl;
+        string marginDenom;
+        uint256 marginAmount;
+        uint256 openBlockHeight;
+    }
+
     struct Order {
         string id;
-        string carbonCreator; // mapped carbon address of the creator
         string market;
         Side side;
         uint256 price;
@@ -24,11 +35,30 @@ contract OrdersRelayer is Ownable, Pausable {
         address evmCreator; // evm address of the creator
     }
 
+    struct MsgOrderUpdate {
+        string orderKey;
+        string OrderId;
+        uint256 avgFilledPrice;
+        Status Status;
+    }
+
+    struct MsgPositionUpdate {
+        string Market;
+        string AccountAddress;
+        int256 Lots;
+        uint256 EntryPrice;
+        int256 RealisedPnl;
+        string MarginDenom;
+        uint256 MarginAmount;
+        uint256 OpenBlockHeight;
+    }
+
     enum Status {
         Nil,
         Pending,
         Closed,
-        Cancelled
+        Cancelled,
+        Open
     }
 
     enum TimeInForce {
@@ -57,8 +87,13 @@ contract OrdersRelayer is Ownable, Pausable {
     // orders emit an event but map used to check for id collision
     mapping(string => Order) public pendingOrders;
 
-    event Test(string log);
+    // Position mapping to store the positions of users
+    // EVM address(key) -> Position (value) carbon address within
+    mapping(address => Position) public positions;
+    EnumerableMap.Bytes32ToUintMap internal _positionRecord;
     //=============Events================
+    event Test(string log); // dklog
+
     event CreateOrder(
         string orderKey,
         address creator,
@@ -74,7 +109,7 @@ contract OrdersRelayer is Ownable, Pausable {
         string contractId
     );
 
-    // address fields removed from event as stack too deep
+    // carbon address fields removed from event as stack too deep
     event FinalisedOrder(
         string orderKey,
         string id,
@@ -90,6 +125,7 @@ contract OrdersRelayer is Ownable, Pausable {
         address evmCreator
     );
 
+    // order error event to inform that the order is not processed by carbon
     event OrderError(string orderKey, string error);
 
     constructor(string memory contractId_, uint64 decimals_) {
@@ -119,7 +155,7 @@ contract OrdersRelayer is Ownable, Pausable {
         return stringId;
     }
 
-    // CreateOrder - generates a new FOK order to be store in the contract and relayed to carbon
+    // createOrder - generates a new FOK order to be store in the contract and relayed to carbon
     // Creator is not the msg.sender as the sender can be a relayer contract
     function createOrder(
         address creator_,
@@ -141,7 +177,7 @@ contract OrdersRelayer is Ownable, Pausable {
         newOrder.quantity = quantity_;
         newOrder.status = Status.Pending;
         newOrder.orderType = orderType_;
-        newOrder.timeInForce = TimeInForce.FOK; //! dklog test gtc and check that the order exist
+        newOrder.timeInForce = TimeInForce.GTC;
         newOrder.isReduceOnly = isReduceOnly_;
 
         // add the order into the mapping
@@ -164,29 +200,45 @@ contract OrdersRelayer is Ownable, Pausable {
         );
     }
 
-    // updatePendingOrder - receives the finalised order from carbon and broadcast the finalised order
-    function updatePendingOrder(
+    // updateOrderStatus - receives the finalised order from carbon and broadcast the finalised order
+    function updateOrderStatus(
         string calldata orderKey,
         string calldata orderId_,
-        string calldata carbonAddr_,
         uint256 avgFilledPrice_,
         Status status_
-    ) external onlyOwner whenNotPaused returns (string memory error) {
+    ) public onlyOwner whenNotPaused returns (bool error) {
         // Get the pending order
-        Order memory pendingOrder = pendingOrders[orderKey];
-        if (pendingOrder.quantity == 0) {
-            return "Pending order cannot be found";
+        Order storage order = pendingOrders[orderKey];
+        if (order.quantity == 0) {
+            return true;
         }
 
         // Update the pending order and emit the finalised order details
-        pendingOrder.avgFilledPrice = avgFilledPrice_;
-        pendingOrder.id = orderId_;
-        pendingOrder.carbonCreator = carbonAddr_;
-        pendingOrder.status = status_;
+        order.avgFilledPrice = avgFilledPrice_;
+        order.id = orderId_;
+        order.status = status_;
 
         // Remove pending order from the store
-        delete pendingOrders[orderKey];
-        emit Test("cycle completed");
+        // delete pendingOrders[orderKey]; dklog
+        pendingOrders[orderKey] = order;
+        return false;
+    }
+
+    function updateAllOrdersStatus(
+        MsgOrderUpdate[] calldata orderUpdates_
+    ) external onlyOwner whenNotPaused returns (string memory error) {
+        for (uint i = 0; i < orderUpdates_.length; i += 1) {
+            bool err = updateOrderStatus(
+                orderUpdates_[i].orderKey,
+                orderUpdates_[i].OrderId,
+                orderUpdates_[i].avgFilledPrice,
+                orderUpdates_[i].Status
+            );
+            if (err) {
+                return "Order could not be updated";
+            }
+        }
+        return "";
     }
 
     function emitFinalOrder(
@@ -209,19 +261,37 @@ contract OrdersRelayer is Ownable, Pausable {
         );
     }
 
-    function ping() public pure returns (string memory) {
-        return "pong";
-    }
-
-    function pendingOrderErr(
+    // deleteErrOrder - deletes the pending order that has been validated to be erroneous by carbon and emits an error event
+    function deleteErrOrder(
         string calldata orderKey_,
         string calldata error_
     ) external onlyOwner whenNotPaused {
-        // purge the pending order from the store as it was not processed by carbon
+        // purge the pending order from the store as it will not be processed by carbon
         delete pendingOrders[orderKey_];
         emit OrderError(orderKey_, error_);
     }
 
-    //todo: cancel order
-    //todo: edit order
+    //todo: function to update all positions kept in state
+    //? consider array or receive a struct ?
+    //? how will carbon know what positions to be sending to evm?
+    //? track based on the order sent / updated from carbon and send the position together?
+    function updatePositions(
+        address EVMAddress_,
+        Position memory incomingPosition_
+    ) external onlyOwner whenNotPaused {
+        Position memory position;
+        position = incomingPosition_;
+        positions[EVMAddress_] = position;
+    }
+
+    // updatePositionRecord - check if the contract should request for position updates for this user
+    function updateAllPosition(
+        MsgPositionUpdate[] calldata positionUpdates_
+    ) internal {
+        // check for futures order
+    }
+
+    function ping() public pure returns (string memory) {
+        return "pong";
+    }
 }
