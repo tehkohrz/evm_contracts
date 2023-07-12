@@ -37,7 +37,7 @@ contract ClientProxy {
         OrdersRelayer relayer = OrdersRelayer(contractAddr_);
         console.log("Requesting in proxy\n");
         string
-            memory fnSignature = "recievePosition(address,string,string,int256,uint256,int256,string,uint256,uint256)";
+            memory fnSignature = "recievePosition((address,string,string,int256,uint256,int256,string,uint256,uint256))";
         relayer.queryAddressPosition(userAddr_, market_, fnSignature);
     }
 
