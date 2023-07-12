@@ -23,7 +23,6 @@ async function main() {
 
   console.log('Calling order');
   const orderTx = await ordersRelayer.createOrder(
-    testOrderReq.creator,
     testOrderReq.market,
     testOrderReq.side,
     testOrderReq.quantity,

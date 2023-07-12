@@ -1,5 +1,4 @@
-import { time, loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers';
-import { anyValue } from '@nomicfoundation/hardhat-chai-matchers/withArgs';
+import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers';
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
 import { OrdersRelayer } from '../typechain-types';
@@ -18,10 +17,9 @@ describe('Orders Relayer', function () {
   }
 
   describe('generate order key', function () {
-    it.only('should generate a unique length 32 key', async function () {
+    it('should generate a unique length 32 key', async function () {
       await loadFixture(deployFixture);
       const tx = await ordersRelayer.generateOrderKey();
-      console.log(tx);
       expect(tx).to.not.be.null;
     });
   });
@@ -40,7 +38,6 @@ describe('Orders Relayer', function () {
       };
 
       const tx = await ordersRelayer.createOrder(
-        testOrderReq.creator,
         testOrderReq.market,
         testOrderReq.side,
         testOrderReq.quantity,
@@ -49,7 +46,6 @@ describe('Orders Relayer', function () {
         testOrderReq.isReduceOnly
       );
       let res = await tx.wait();
-      console.log(res);
       expect(tx).to.not.be.null;
     });
   });
