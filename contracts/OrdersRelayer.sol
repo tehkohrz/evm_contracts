@@ -168,7 +168,6 @@ contract OrdersRelayer is Ownable, Pausable {
 
     // createOrder - generates a new FOK order to be store in the contract and relayed to carbon
     // returns a unique orderKey that is used to identify the order in the contract before
-    // carbon order id is generated and received
     // Creator is not the msg.sender as the sender can be a relayer contract
     function createOrder(
         string calldata market_,
@@ -178,9 +177,11 @@ contract OrdersRelayer is Ownable, Pausable {
         uint256 price_,
         bool isReduceOnly_,
         string calldata callbackSig_
-    ) external whenNotPaused returns (string memory orderKey) {
+    ) external whenNotPaused {
+        console.log("createOrder called", market_); //dklog
+
         Order memory newOrder;
-        orderKey = generateOrderKey();
+        string memory orderKey = generateOrderKey();
 
         address creator_ = tx.origin; // to use tx.origin or _msg.Sender? //dklog
 
@@ -225,8 +226,7 @@ contract OrdersRelayer is Ownable, Pausable {
             decimals,
             contractId
         );
-
-        return orderKey;
+        console.log("ORDER KEY GENERATED", orderKey);
     }
 
     // updateOrderStatus - receives the finalised order from carbon and broadcast the finalised order
@@ -248,8 +248,7 @@ contract OrdersRelayer is Ownable, Pausable {
         order.status = status_;
 
         // Callback to the caller or emit finalised order event
-        // orderCallback(order, orderKey);
-        emitFinalOrder(order, orderKey);
+        orderCallback(order, orderKey);
         // Remove pending order from the store
         delete pendingOrders[orderKey];
         return false;

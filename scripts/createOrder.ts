@@ -1,4 +1,5 @@
-import hre from 'hardhat';
+import { ethers } from 'hardhat';
+import { ClientProxy, OrdersRelayer } from '../typechain-types';
 
 const OrdersAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 
@@ -6,34 +7,68 @@ const valEVMAccAddress = '0x5161e15fee8b918d4621703db75641bbc25301c8';
 const carbonAddress = '0x352D3dfBeAF0a23A127d0920eB0C390d4905aa13';
 
 async function main() {
-  const OrdersRelayer = await hre.ethers.getContractFactory('OrdersRelayer');
+  const OrdersRelayer = await ethers.getContractFactory('OrdersRelayer');
+  const ordersRelayer = await OrdersRelayer.deploy('testContract', 0);
+  await ordersRelayer._deployed();
+  console.log(ordersRelayer.address);
+  // const ordersRelayer = OrdersRelayer.attach(carbonAddress);
 
-  const ordersRelayer = OrdersRelayer.attach(carbonAddress);
-  const test = await ordersRelayer.ping();
+  const orderAddress = ordersRelayer.address;
+  // Deploy clientProxy contract
+  const ClientProxy = await ethers.getContractFactory('ClientProxy');
+  const clientProxy = await ClientProxy.deploy(orderAddress);
+  await clientProxy._deployed();
 
   const testOrderReq = {
     creator: valEVMAccAddress,
     market: 'swth_eth',
-    side: hre.ethers.BigNumber.from('0'),
+    side: ethers.BigNumber.from('0'),
     quantity: 1231230000000000,
-    orderType: hre.ethers.BigNumber.from('0'),
+    orderType: ethers.BigNumber.from('0'),
     price: 1000000000000000,
     isReduceOnly: false,
+    fnSig:
+      'saveOrder((string,string,uint8,uint256,uint256,uint8,uint8,uint8,uint256,bool,address),string)',
   };
 
-  console.log('Calling order');
-  const orderTx = await ordersRelayer.createOrder(
+  const orderTx = await clientProxy.createProxyOrder(
     testOrderReq.market,
     testOrderReq.side,
     testOrderReq.quantity,
     testOrderReq.orderType,
     testOrderReq.price,
-    testOrderReq.isReduceOnly
+    testOrderReq.isReduceOnly,
+    testOrderReq.fnSig
   );
+  // const orderTx = await ordersRelayer.createOrder(
+  //   testOrderReq.market,
+  //   testOrderReq.side,
+  //   testOrderReq.quantity,
+  //   testOrderReq.orderType,
+  //   testOrderReq.price,
+  //   testOrderReq.isReduceOnly,
+  //   testOrderReq.fnSig
+  // );
+
   console.log('Tx encoded', orderTx);
   const orderReceipt = await orderTx.wait();
   console.log('============Logging events============ \n');
   console.log(orderReceipt.events);
+
+  console.log('============Update to relayer============ \n');
+  // // const orderUpdate: OrdersRelayer.MsgOrderUpdateStruct = {
+  // //   orderKey: orderKey,
+  // //   orderId: 'testOrder',
+  // //   avgFilledPrice: '123123123',
+  // //   status: ethers.BigNumber.from('0'),
+  // // };
+
+  // const updateOrder = await ordersRelayer.updateAllOrdersStatus([orderUpdate]);
+  // const updateTx = await updateOrder.wait();
+
+  // const order = await clientProxy.orders('testOrder');
+  // console.log('============Order============ \n');
+  // console.log(order);
 
   return;
 }

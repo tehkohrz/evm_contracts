@@ -6,9 +6,44 @@ import "hardhat/console.sol";
 
 contract ClientProxy {
     mapping(address => OrdersRelayer.Position) public positions;
+    mapping(string => OrdersRelayer.Order) public orders;
 
+    OrdersRelayer orderRelayer;
     uint8 public testNumber = 0;
     uint8 public testNumber2 = 0;
+
+    constructor(address orderRelayerAddr_) {
+        console.log(orderRelayerAddr_);
+        orderRelayer = OrdersRelayer(orderRelayerAddr_);
+    }
+
+    function createProxyOrder(
+        string calldata market_,
+        OrdersRelayer.Side side_,
+        uint256 quantity_,
+        OrdersRelayer.OrderType orderType_,
+        uint256 price_,
+        bool isReduceOnly_,
+        string calldata callbackSig_
+    ) public {
+        orderRelayer.createOrder(
+            market_,
+            side_,
+            quantity_,
+            orderType_,
+            price_,
+            isReduceOnly_,
+            callbackSig_
+        );
+    }
+
+    function saveOrder(
+        OrdersRelayer.Order calldata order_,
+        string calldata orderKey_
+    ) public {
+        console.log("order saving", orderKey_);
+        orders["testOrder"] = order_;
+    }
 
     function recievePosition(
         OrdersRelayer.MsgPositionUpdate calldata msg_

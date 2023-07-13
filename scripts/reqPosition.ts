@@ -19,7 +19,7 @@ async function main() {
 
   // Deploy clientProxy contract
   const ClientProxy = await ethers.getContractFactory('ClientProxy');
-  const clientProxy = await ClientProxy.deploy();
+  const clientProxy = await ClientProxy.deploy(contract.address);
   const clientProxyContract = await clientProxy._deployed();
   console.log('client\n', clientProxyContract.address);
 
@@ -40,7 +40,7 @@ async function main() {
     openBlockHeight: '1000',
   };
 
-  console.log('Actual================ Relayer updating position');
+  console.log('================ Relayer updating position');
   const positionUpdateTx = await ordersRelayer.respondToPositionQuery(positionUpdate);
   console.log('Tx encoded', positionUpdateTx);
   const positionUpdateReceipt = await positionUpdateTx.wait();
