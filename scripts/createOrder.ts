@@ -6,12 +6,20 @@ const OrdersAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 const valEVMAccAddress = '0x5161e15fee8b918d4621703db75641bbc25301c8';
 const carbonAddress = '0x352D3dfBeAF0a23A127d0920eB0C390d4905aa13';
 
+const carbonNetwork = false;
+
 async function main() {
   const OrdersRelayer = await ethers.getContractFactory('OrdersRelayer');
-  const ordersRelayer = await OrdersRelayer.deploy('testContract', 0);
-  await ordersRelayer._deployed();
-  console.log(ordersRelayer.address);
-  // const ordersRelayer = OrdersRelayer.attach(carbonAddress);
+  const orderI = OrdersRelayer.interface;
+  let ordersRelayer: OrdersRelayer;
+
+  if (carbonNetwork) {
+    ordersRelayer = OrdersRelayer.attach(carbonAddress);
+  } else {
+    ordersRelayer = await OrdersRelayer.deploy('testContract', 0);
+    await ordersRelayer._deployed();
+    console.log('hardhat network relayer:', ordersRelayer.address);
+  }
 
   const orderAddress = ordersRelayer.address;
   // Deploy clientProxy contract
@@ -31,6 +39,7 @@ async function main() {
       'saveOrder((string,string,uint8,uint256,uint256,uint8,uint8,uint8,uint256,bool,address),string)',
   };
 
+  console.log('============Creating order through proxy============ \n');
   const orderTx = await clientProxy.createProxyOrder(
     testOrderReq.market,
     testOrderReq.side,
@@ -50,25 +59,31 @@ async function main() {
   //   testOrderReq.fnSig
   // );
 
-  console.log('Tx encoded', orderTx);
+  // Parsing the emitted event to obtain the orderKey
   const orderReceipt = await orderTx.wait();
+  let parsedLog = orderI.parseLog(orderReceipt.logs[0]);
+  const orderKey = parsedLog.args.orderKey;
   console.log('============Logging events============ \n');
-  console.log(orderReceipt.events);
+  console.log('OrderKey:', orderKey);
 
-  console.log('============Update to relayer============ \n');
-  // // const orderUpdate: OrdersRelayer.MsgOrderUpdateStruct = {
-  // //   orderKey: orderKey,
-  // //   orderId: 'testOrder',
-  // //   avgFilledPrice: '123123123',
-  // //   status: ethers.BigNumber.from('0'),
-  // // };
+  console.log('============Sending Manual Update to relayer============ \n');
+  const orderUpdate: OrdersRelayer.MsgOrderUpdateStruct = {
+    orderKey: orderKey,
+    orderId: 'testOrder',
+    avgFilledPrice: '123123123',
+    status: ethers.BigNumber.from('0'),
+  };
+  const allUpdates: OrdersRelayer.MsgOrderUpdateStruct[] = [orderUpdate];
 
-  // const updateOrder = await ordersRelayer.updateAllOrdersStatus([orderUpdate]);
-  // const updateTx = await updateOrder.wait();
+  const updateOrder = await ordersRelayer.updateAllOrdersStatus(allUpdates);
+  const updateTx = await updateOrder.wait();
+  console.log('============Logging events============ \n');
+  parsedLog = orderI.parseLog(orderReceipt.logs[0]);
+  console.log('Parsed logs:', parsedLog.args);
 
-  // const order = await clientProxy.orders('testOrder');
-  // console.log('============Order============ \n');
-  // console.log(order);
+  const order = await clientProxy.orders('testOrder');
+  console.log('============Checking Order in Proxy============ \n');
+  console.log(order);
 
   return;
 }

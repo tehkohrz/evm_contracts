@@ -42,6 +42,7 @@ contract ClientProxy {
         string calldata orderKey_
     ) public {
         console.log("order saving", orderKey_);
+        console.log("order data", order_.id);
         orders["testOrder"] = order_;
     }
 

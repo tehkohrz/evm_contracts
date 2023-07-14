@@ -301,10 +301,12 @@ contract OrdersRelayer is Ownable, Pausable {
         // Check for callback request
         OrderQuery memory req = orderCreationCallback[orderKey];
         if (bytes(req.fnSigature).length > 0) {
+            console.log("relayer calling callback"); //dklog
             // Send the full order back to the caller or emit event on failure
             bytes memory encodedCall = abi.encodeWithSignature(
                 req.fnSigature,
-                order
+                order,
+                orderKey
             );
             (noEmitEvent, ) = req.caller.call(encodedCall);
 
@@ -312,6 +314,7 @@ contract OrdersRelayer is Ownable, Pausable {
         }
 
         if (!noEmitEvent) {
+            console.log("relayer emitting event"); //dklog
             emitFinalOrder(order, orderKey);
         }
     }
