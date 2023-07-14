@@ -9,26 +9,23 @@ const valEVMAccAddress = '0x5161e15fee8b918d4621703db75641bbc25301c8';
 
 async function main() {
   // Deploy orderRelayer contract
-  const [deployer] = await ethers.getSigners();
-  console.log('Deploying contracts with the account:', deployer.address);
   const OrdersRelayer = await ethers.getContractFactory('OrdersRelayer');
-
   const ordersRelayer = await OrdersRelayer.deploy('testcontract', 0);
-  const contract = await ordersRelayer._deployed();
-  console.log('relayer\n', contract.address);
+  await ordersRelayer._deployed();
+  console.log('relayer\n', ordersRelayer.address);
 
   // Deploy clientProxy contract
   const ClientProxy = await ethers.getContractFactory('ClientProxy');
-  const clientProxy = await ClientProxy.deploy(contract.address);
-  const clientProxyContract = await clientProxy._deployed();
-  console.log('client\n', clientProxyContract.address);
+  const clientProxy = await ClientProxy.deploy(ordersRelayer.address);
+  await clientProxy._deployed();
+  console.log('client\n', clientProxy.address);
 
   console.log('Client making request');
-  await clientProxy.requestForPosition(OrdersAddress, valEVMAccAddress, 'btc_donuts');
+  await clientProxy.requestForPosition(valEVMAccAddress, 'btc_donuts');
   const checkRequest = await ordersRelayer.positionQueries(valEVMAccAddress);
   console.log('Check request exist in queue', checkRequest);
 
-  const positionUpdate: OrdersRelayer.MsgPositionUpdateStruct = {
+  const positionUpdate: OrdersRelayer.MsgPositionQueryResStruct = {
     evmAddress: valEVMAccAddress,
     market: 'btc_donuts',
     accountAddress: 'testtest',

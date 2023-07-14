@@ -9,12 +9,6 @@ import "./@openzeppelin/contracts/security/Pausable.sol";
 import "hardhat/console.sol";
 
 contract OrdersRelayer is Ownable, Pausable {
-    struct PositionQuery {
-        string market;
-        address caller;
-        string fnSigature;
-    }
-
     struct Position {
         string market;
         string accountAddress;
@@ -24,12 +18,6 @@ contract OrdersRelayer is Ownable, Pausable {
         string marginDenom;
         uint256 marginAmount;
         uint256 openBlockHeight;
-    }
-
-    struct OrderQuery {
-        address caller;
-        string fnSigature;
-        string orderId;
     }
 
     struct Order {
@@ -53,7 +41,13 @@ contract OrdersRelayer is Ownable, Pausable {
         Status status;
     }
 
-    struct MsgPositionUpdate {
+    struct PositionQuery {
+        string market;
+        address caller;
+        string fnSigature;
+    }
+
+    struct MsgPositionQueryRes {
         address evmAddress;
         string market;
         string accountAddress;
@@ -65,8 +59,18 @@ contract OrdersRelayer is Ownable, Pausable {
         uint256 openBlockHeight;
     }
 
+    struct OrderQuery {
+        address caller;
+        string fnSigature;
+    }
+
+    struct MsgOrderQueryResponse {
+        string orderKey;
+        Order order;
+    }
+
     enum Status {
-        Nil,
+        Unprocessed,
         Pending,
         Closed,
         Cancelled,
@@ -111,7 +115,7 @@ contract OrdersRelayer is Ownable, Pausable {
 
     // Mapping to store caller address and request
     mapping(address => PositionQuery) public positionQueries;
-    mapping(address => OrderQuery) public orderQueries;
+    mapping(string => OrderQuery) public orderQueries;
     mapping(string => OrderQuery) public orderCreationCallback;
 
     // =============Events================
@@ -134,10 +138,10 @@ contract OrdersRelayer is Ownable, Pausable {
 
     event FinalisedOrder(string orderKey, Order order);
 
-    event PositionResponse(MsgPositionUpdate msg);
+    event PositionResponse(MsgPositionQueryRes msg);
 
     // order error event to inform that the order is not processed by carbon
-    event OrderError(string orderKey, string error);
+    event OrderError(string orderKey, Order errOrder, string error);
 
     constructor(string memory contractId_, uint64 decimals_) {
         contractId = contractId_;
@@ -146,7 +150,7 @@ contract OrdersRelayer is Ownable, Pausable {
 
     // Hash functions to generate a uuid for the order using a combination of contractId
     // and running sequence number within the contract
-    function generateOrderKey() public returns (string memory) {
+    function generateOrderKey() private returns (string memory) {
         bool isCollision = true;
         string memory stringId;
         // generate hashId until no collisions found
@@ -158,7 +162,7 @@ contract OrdersRelayer is Ownable, Pausable {
 
             // Check existing pending store for key collisions
             Order memory existingOrder = pendingOrders[stringId];
-            if (existingOrder.status != Status.Nil) {
+            if (existingOrder.status != Status.Unprocessed) {
                 isCollision = true;
             }
         }
@@ -193,7 +197,7 @@ contract OrdersRelayer is Ownable, Pausable {
         newOrder.quantity = quantity_;
         newOrder.status = Status.Pending;
         newOrder.orderType = orderType_;
-        newOrder.timeInForce = TimeInForce.GTC; // DKLOG for testing change back to FOK
+        newOrder.timeInForce = TimeInForce.GTC; //! DKLOG for testing change back to FOK
         newOrder.isReduceOnly = isReduceOnly_;
 
         // add the order into the mapping
@@ -204,8 +208,7 @@ contract OrdersRelayer is Ownable, Pausable {
             // order id field is irrelevant here
             orderCreationCallback[orderKey] = OrderQuery(
                 _msgSender(),
-                callbackSig_,
-                orderKey
+                callbackSig_
             );
         }
 
@@ -275,21 +278,7 @@ contract OrdersRelayer is Ownable, Pausable {
         Order memory order,
         string calldata orderKey
     ) internal {
-        emit FinalisedOrder(
-            orderKey,
-            order
-            // order.id,
-            // order.market,
-            // order.side,
-            // order.price,
-            // order.quantity,
-            // order.status,
-            // order.orderType,
-            // order.timeInForce,
-            // order.avgFilledPrice,
-            // order.isReduceOnly,
-            // order.evmCreator
-        );
+        emit FinalisedOrder(orderKey, order);
     }
 
     function orderCallback(
@@ -324,9 +313,29 @@ contract OrdersRelayer is Ownable, Pausable {
         string calldata orderKey_,
         string calldata error_
     ) external onlyOwner whenNotPaused {
-        // purge the pending order from the store as it will not be processed by carbon
+        bool noEmitEvent = false;
+        // purge the pending order and update with unprocessed status
+        Order storage errOrder = pendingOrders[orderKey_];
         delete pendingOrders[orderKey_];
-        emit OrderError(orderKey_, error_);
+        errOrder.status = Status.Unprocessed;
+
+        // Check for callback request
+        OrderQuery memory req = orderCreationCallback[orderKey_];
+        if (bytes(req.fnSigature).length > 0) {
+            // Send the full order back to the caller or emit event on failure
+            bytes memory encodedCall = abi.encodeWithSignature(
+                req.fnSigature,
+                errOrder,
+                orderKey_
+            );
+            (noEmitEvent, ) = req.caller.call(encodedCall);
+
+            delete orderCreationCallback[orderKey_];
+        }
+
+        if (!noEmitEvent) {
+            emit OrderError(orderKey_, errOrder, error_);
+        }
     }
 
     // QueryAddressPosition
@@ -345,7 +354,7 @@ contract OrdersRelayer is Ownable, Pausable {
 
     // Caller contract need to implement the function signature defined above to receive the response
     function respondToPositionQuery(
-        MsgPositionUpdate calldata msg_
+        MsgPositionQueryRes calldata msg_
     ) external onlyOwner whenNotPaused {
         PositionQuery memory queryReq = positionQueries[msg_.evmAddress];
 
@@ -365,15 +374,50 @@ contract OrdersRelayer is Ownable, Pausable {
         delete positionQueries[msg_.evmAddress];
     }
 
-    //Trial functions - sanity check that it works
-    function updateTestNumber(address evmAddr, uint8 testNumber_) external {
-        PositionQuery memory query = positionQueries[evmAddr];
-        console.log("relayer", testNumber_);
-        // This works must be exact name of function
+    // queryOrder - query the order by orderKey and saves the callback fnSig
+    // for call back to origin address
+    function queryOrder(
+        string calldata orderKey_,
+        string calldata callbackSig_
+    ) external whenNotPaused {
+        OrderQuery memory orderQuery;
+        orderQuery.caller = _msgSender();
+        orderQuery.fnSigature = callbackSig_;
+        console.log("received signature", callbackSig_);
 
-        query.caller.call(
-            abi.encodeWithSignature(query.fnSigature, testNumber_)
+        orderQueries[orderKey_] = orderQuery;
+        console.log("Request logged");
+    }
+
+    // respondToOrderQuery - responds to the order query by calling the callback function
+    // emit an event of the order details if the callback fails
+    function respondToOrderQuery(
+        MsgOrderQueryResponse memory msg_
+    ) external whenNotPaused onlyOwner {
+        OrderQuery memory queryReq = orderQueries[msg_.orderKey];
+
+        console.log("respondToOrderQuery\n", queryReq.fnSigature); //dklog
+        bytes memory encodedCall = abi.encodeWithSignature(
+            queryReq.fnSigature,
+            msg_.order,
+            msg_.orderKey
         );
+
+        (bool success, ) = queryReq.caller.call(encodedCall);
+        if (!success) {
+            emit FinalisedOrder(msg_.orderKey, msg_.order);
+        }
+        delete orderQueries[msg_.orderKey];
+    }
+
+    //Trial functions - sanity check
+    function updateTestNumber(address evmAddr, uint8 testNumber_) external {
+        // PositionQuery memory query = positionQueries[evmAddr];
+        // console.log("relayer", testNumber_);
+        // // This works must be exact name of function
+        // query.caller.call(
+        //     abi.encodeWithSignature(query.fnSigature, testNumber_)
+        // );
     }
 
     function ping() public pure returns (string memory) {

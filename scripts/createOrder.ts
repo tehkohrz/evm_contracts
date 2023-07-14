@@ -6,7 +6,10 @@ const OrdersAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 const valEVMAccAddress = '0x5161e15fee8b918d4621703db75641bbc25301c8';
 const carbonAddress = '0x352D3dfBeAF0a23A127d0920eB0C390d4905aa13';
 
-const carbonNetwork = false;
+//CONFIGURATIONS
+const carbonNetwork = false; // for testing with relayer on carbon network
+const orderFailed = true; // for testing order failure via deleteErrorOrder method
+const proxyCallback = true; // to toggle sending callback or not by the proxy
 
 async function main() {
   const OrdersRelayer = await ethers.getContractFactory('OrdersRelayer');
@@ -47,17 +50,8 @@ async function main() {
     testOrderReq.orderType,
     testOrderReq.price,
     testOrderReq.isReduceOnly,
-    testOrderReq.fnSig
+    proxyCallback
   );
-  // const orderTx = await ordersRelayer.createOrder(
-  //   testOrderReq.market,
-  //   testOrderReq.side,
-  //   testOrderReq.quantity,
-  //   testOrderReq.orderType,
-  //   testOrderReq.price,
-  //   testOrderReq.isReduceOnly,
-  //   testOrderReq.fnSig
-  // );
 
   // Parsing the emitted event to obtain the orderKey
   const orderReceipt = await orderTx.wait();
@@ -66,19 +60,38 @@ async function main() {
   console.log('============Logging events============ \n');
   console.log('OrderKey:', orderKey);
 
-  console.log('============Sending Manual Update to relayer============ \n');
   const orderUpdate: OrdersRelayer.MsgOrderUpdateStruct = {
     orderKey: orderKey,
     orderId: 'testOrder',
     avgFilledPrice: '123123123',
-    status: ethers.BigNumber.from('0'),
+    status: ethers.BigNumber.from('2'),
   };
-  const allUpdates: OrdersRelayer.MsgOrderUpdateStruct[] = [orderUpdate];
 
-  const updateOrder = await ordersRelayer.updateAllOrdersStatus(allUpdates);
-  const updateTx = await updateOrder.wait();
+  if (orderFailed) {
+    console.log('============Sending Order Failure to relayer============ \n');
+    const errOrderTx = await ordersRelayer.deleteErrOrder(
+      orderKey,
+      'order not processed by carbon'
+    );
+
+    console.log('============Logging events============ \n');
+    const errOrderReceipt = await errOrderTx.wait();
+    if (!proxyCallback) {
+      parsedLog = orderI.parseLog(errOrderReceipt.logs[0]);
+      console.log('Parsed logs:', parsedLog);
+    }
+    const order = await clientProxy.orders('testOrder');
+    console.log('============Checking Order in Proxy============ \n');
+    console.log(order);
+    return;
+  }
+
+  console.log('============Sending Manual Update to relayer============ \n');
+  const allUpdates: OrdersRelayer.MsgOrderUpdateStruct[] = [orderUpdate];
+  const updateOrderTx = await ordersRelayer.updateAllOrdersStatus(allUpdates);
+  const updateReceipt = await updateOrderTx.wait();
   console.log('============Logging events============ \n');
-  parsedLog = orderI.parseLog(orderReceipt.logs[0]);
+  parsedLog = orderI.parseLog(updateReceipt.logs[0]);
   console.log('Parsed logs:', parsedLog.args);
 
   const order = await clientProxy.orders('testOrder');

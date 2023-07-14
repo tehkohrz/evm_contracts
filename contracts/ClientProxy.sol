@@ -8,7 +8,8 @@ contract ClientProxy {
     mapping(address => OrdersRelayer.Position) public positions;
     mapping(string => OrdersRelayer.Order) public orders;
 
-    OrdersRelayer orderRelayer;
+    OrdersRelayer orderRelayer; // OrdersRelayer contract
+
     uint8 public testNumber = 0;
     uint8 public testNumber2 = 0;
 
@@ -24,8 +25,12 @@ contract ClientProxy {
         OrdersRelayer.OrderType orderType_,
         uint256 price_,
         bool isReduceOnly_,
-        string calldata callbackSig_
+        bool callback_
     ) public {
+        string memory fnSignature = "";
+        if (callback_) {
+            fnSignature = "saveOrder((string,string,uint8,uint256,uint256,uint8,uint8,uint8,uint256,bool,address),string)";
+        }
         orderRelayer.createOrder(
             market_,
             side_,
@@ -33,7 +38,7 @@ contract ClientProxy {
             orderType_,
             price_,
             isReduceOnly_,
-            callbackSig_
+            fnSignature
         );
     }
 
@@ -47,7 +52,7 @@ contract ClientProxy {
     }
 
     function recievePosition(
-        OrdersRelayer.MsgPositionUpdate calldata msg_
+        OrdersRelayer.MsgPositionQueryRes calldata msg_
     ) public {
         console.log("message updated in proxy");
         OrdersRelayer.Position memory updatedPosition = OrdersRelayer.Position(
@@ -60,21 +65,24 @@ contract ClientProxy {
             msg_.marginAmount,
             msg_.openBlockHeight
         );
-        string memory test = updatedPosition.accountAddress;
-        console.log("data recieved", test);
         positions[msg_.evmAddress] = updatedPosition;
     }
 
     function requestForPosition(
-        address contractAddr_,
         address userAddr_,
         string calldata market_
     ) public {
-        OrdersRelayer relayer = OrdersRelayer(contractAddr_);
-        console.log("Requesting in proxy\n");
+        console.log("Requesting position in proxy\n");
         string
             memory fnSignature = "recievePosition((address,string,string,int256,uint256,int256,string,uint256,uint256))";
-        relayer.queryAddressPosition(userAddr_, market_, fnSignature);
+        orderRelayer.queryAddressPosition(userAddr_, market_, fnSignature);
+    }
+
+    function requestForOrder(string calldata orderKey_) public {
+        console.log("Requesting order in proxy\n");
+        string
+            memory fnSignature = "saveOrder((string,string,uint8,uint256,uint256,uint8,uint8,uint8,uint256,bool,address),string)";
+        orderRelayer.queryOrder(orderKey_, fnSignature);
     }
 
     //Trial Functions
