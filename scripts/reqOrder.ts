@@ -7,7 +7,7 @@ const valEVMAccAddress = '0x5161e15fee8b918d4621703db75641bbc25301c8';
 const carbonAddress = '0x352D3dfBeAF0a23A127d0920eB0C390d4905aa13';
 
 //CONFIGURATIONS
-const carbonNetwork = false; // for testing with relayer on carbon network
+const carbonNetwork = true; // for testing with relayer on carbon network
 const orderFailed = false; // for testing order failure via deleteErrorOrder method
 const proxyCallback = true; // to toggle sending callback or not by the proxy
 

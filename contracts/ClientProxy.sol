@@ -5,7 +5,18 @@ import "./OrdersRelayer.sol";
 import "hardhat/console.sol";
 
 contract ClientProxy {
-    mapping(address => OrdersRelayer.Position) public positions;
+    struct Position {
+        string market;
+        string accountAddress;
+        int256 lots;
+        uint256 entryPrice;
+        int256 realizedPnl;
+        string allocatedMarginDenom;
+        uint256 allocatedMarginAmount;
+        uint256 openedBlockHeight;
+    }
+
+    mapping(address => Position) public positions;
     mapping(string => OrdersRelayer.Order) public orders;
 
     OrdersRelayer orderRelayer; // OrdersRelayer contract
@@ -55,15 +66,15 @@ contract ClientProxy {
         OrdersRelayer.MsgPositionQueryRes calldata msg_
     ) public {
         console.log("message updated in proxy");
-        OrdersRelayer.Position memory updatedPosition = OrdersRelayer.Position(
+        Position memory updatedPosition = Position(
             msg_.market,
-            msg_.accountAddress,
+            msg_.carbonAddress,
             msg_.lots,
             msg_.entryPrice,
-            msg_.realisedPnl,
-            msg_.marginDenom,
-            msg_.marginAmount,
-            msg_.openBlockHeight
+            msg_.realizedPnl,
+            msg_.allocatedMarginDenom,
+            msg_.allocatedMarginAmount,
+            msg_.openedBlockHeight
         );
         positions[msg_.evmAddress] = updatedPosition;
     }
