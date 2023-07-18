@@ -144,6 +144,15 @@ contract OrdersRelayer is Ownable, Pausable {
     // @notice event for position query response as a back up for callback
     event PositionQueryResponse(MsgPositionQueryRes msg);
 
+    // @param evmAddr - addresss of the position queried
+    // @param errPos - fields of the position queries for easier reference to query
+    // @param error - error message from evm integration of order module
+    event PositionError(
+        address evmAddr,
+        MsgPositionQueryRes errPos,
+        string error
+    );
+
     // @param orderKey - evmKey of the order
     // @param order - order that has failed and not processed by carbon broker
     // @param error - error message from evm integration of order module
@@ -312,6 +321,7 @@ contract OrdersRelayer is Ownable, Pausable {
         OrderQuery memory req = orderCreationCallback[orderKey_];
         if (bytes(req.fnSigature).length > 0) {
             // Send the full order back to the caller or emit event on failure
+            errOrder.id = error_;
             bytes memory encodedCall = abi.encodeWithSignature(
                 req.fnSigature,
                 errOrder,
@@ -367,6 +377,44 @@ contract OrdersRelayer is Ownable, Pausable {
         positionQueries[msg_.evmAddress] = queryReq;
         // remove the query from the store
         delete positionQueries[msg_.evmAddress];
+    }
+
+    // @notice delete the pending position query in the event of an error in query
+    // @param evmAddr_ - evm address of the position to query
+    // @param error_ - error message returned from evm integration of order module
+    function deletePositionQuery(
+        address evmAddr_,
+        string calldata error_
+    ) external onlyOwner {
+        bool noEmitEvent = false;
+        // purge the pending order and update with unprocessed status
+        PositionQuery storage queryReq = positionQueries[evmAddr_];
+        delete positionQueries[evmAddr_];
+
+        // Callback expecting the same format, send back the format with error
+        MsgPositionQueryRes memory errPos = MsgPositionQueryRes(
+            evmAddr_,
+            queryReq.market,
+            "",
+            0,
+            0,
+            0,
+            error_,
+            0,
+            0
+        );
+        // Check for callback request
+        if (bytes(queryReq.fnSigature).length > 0) {
+            bytes memory encodedCall = abi.encodeWithSignature(
+                queryReq.fnSigature,
+                errPos
+            );
+            (noEmitEvent, ) = queryReq.caller.call(encodedCall);
+        }
+
+        if (!noEmitEvent) {
+            emit PositionError(evmAddr_, errPos, error_);
+        }
     }
 
     // @notice registers the order query request from the client and saves the required details
