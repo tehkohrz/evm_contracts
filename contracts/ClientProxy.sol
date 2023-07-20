@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./OrdersRelayer.sol";
+import "./CreateOrders.sol";
+import "./PositionQuerier.sol";
+import "./OrdersQuerier.sol";
 import "hardhat/console.sol";
 
 contract ClientProxy {
@@ -17,23 +19,30 @@ contract ClientProxy {
     }
 
     mapping(address => Position) public positions;
-    mapping(string => OrdersRelayer.Order) public orders;
+    mapping(string => CreateOrders.Order) public orders;
 
-    OrdersRelayer orderRelayer; // OrdersRelayer contract
+    CreateOrders createOrders; // CreateOrders contract
+    OrdersQuerier ordersQuerier; // OrdersQuerier contract
+    PositionQuerier positionQuerier; // PositionQuerier contract
 
     uint8 public testNumber = 0;
     uint8 public testNumber2 = 0;
 
-    constructor(address orderRelayerAddr_) {
-        console.log(orderRelayerAddr_);
-        orderRelayer = OrdersRelayer(orderRelayerAddr_);
+    constructor(
+        address createOrdersAddr_,
+        address ordersQuerierAddr_,
+        address positionQuerierAddr_
+    ) {
+        createOrders = CreateOrders(createOrdersAddr_);
+        ordersQuerier = OrdersQuerier(ordersQuerierAddr_);
+        positionQuerier = PositionQuerier(positionQuerierAddr_);
     }
 
     function createProxyOrder(
         string calldata market_,
-        OrdersRelayer.Side side_,
+        CreateOrders.Side side_,
         uint256 quantity_,
-        OrdersRelayer.OrderType orderType_,
+        CreateOrders.OrderType orderType_,
         uint256 price_,
         bool isReduceOnly_,
         bool callback_
@@ -42,7 +51,7 @@ contract ClientProxy {
         if (callback_) {
             fnSignature = "saveOrder((string,string,uint8,uint256,uint256,uint8,uint8,uint8,uint256,bool,address),string)";
         }
-        orderRelayer.createOrder(
+        createOrders.createOrder(
             market_,
             side_,
             quantity_,
@@ -54,16 +63,16 @@ contract ClientProxy {
     }
 
     function saveOrder(
-        OrdersRelayer.Order calldata order_,
+        CreateOrders.Order calldata order_,
         string calldata orderKey_
     ) public {
         console.log("order saving", orderKey_);
         console.log("order data", order_.id);
-        orders["testOrder"] = order_;
+        orders[orderKey_] = order_;
     }
 
     function recievePosition(
-        OrdersRelayer.MsgPositionQueryRes calldata msg_
+        PositionQuerier.MsgPositionQueryRes calldata msg_
     ) public {
         console.log("message updated in proxy");
         Position memory updatedPosition = Position(
@@ -86,27 +95,14 @@ contract ClientProxy {
         console.log("Requesting position in proxy\n");
         string
             memory fnSignature = "recievePosition((address,string,string,int256,uint256,int256,string,uint256,uint256))";
-        orderRelayer.queryAddressPosition(userAddr_, market_, fnSignature);
+        positionQuerier.queryAddressPosition(userAddr_, market_, fnSignature);
     }
 
     function requestForOrder(string calldata orderKey_) public {
         console.log("Requesting order in proxy\n");
         string
             memory fnSignature = "saveOrder((string,string,uint8,uint256,uint256,uint8,uint8,uint8,uint256,bool,address),string)";
-        orderRelayer.queryOrder(orderKey_, fnSignature);
-    }
-
-    //Trial Functions
-    function requestForNumber(address contractAddr, address user) public {
-        string memory sig = "setTestNumber(uint8)";
-        OrdersRelayer relayer = OrdersRelayer(contractAddr);
-        relayer.queryAddressPosition(user, "test", sig);
-    }
-
-    function setTestNumber(uint8 testNumber_) public {
-        console.log("setTestNumber", testNumber_);
-        testNumber = testNumber_;
-        testNumber2 = 10;
+        ordersQuerier.queryOrder(orderKey_, fnSignature);
     }
 
     function ping() public pure returns (string memory) {
